@@ -526,13 +526,20 @@ class Cameras(TensorDataclass):
         camera_indices = camera_indices.to(self.device)
         coords = coords.to(self.device)
 
-        # Checking to make sure everything is of the right shape and type
-        num_rays_shape = camera_indices.shape[:-1]
-        assert camera_indices.shape == num_rays_shape + (self.ndim,)
-        assert coords.shape == num_rays_shape + (2,)
-        assert coords.shape[-1] == 2
-        assert camera_opt_to_camera is None or camera_opt_to_camera.shape == num_rays_shape + (3, 4)
-        assert distortion_params_delta is None or distortion_params_delta.shape == num_rays_shape + (6,)
+        if coords is None:
+            coords: torch.Tensor = cameras.get_image_coords()  # (h, w, 2)
+            coords = coords.reshape(coords.shape[:2] + (1,) * len(camera_indices.shape[:-1]) + (2,))  # (h, w, 1..., 2)
+            coords = coords.expand(coords.shape[:2] + camera_indices.shape[:-1] + (2,))  # (h, w, num_rays, 2)
+            camera_opt_to_camera = (  # (h, w, num_rays, 3, 4) or None
+                camera_opt_to_camera.broadcast_to(coords.shape[:-1] + (3, 4))
+                if camera_opt_to_camera is not None
+                else None
+            )
+            distortion_params_delta = (  # (h, w, num_rays, 6) or None
+                distortion_params_delta.broadcast_to(coords.shape[:-1] + (6,))
+                if distortion_params_delta is not None
+                else None
+            )
 
         # Here, we've broken our indices down along the cameras_ndim dimension allowing us to index by all of our output
         # rays at each dimension of our cameras object
@@ -651,11 +658,12 @@ class Cameras(TensorDataclass):
         pixel_area = (dx * dy)[..., None]  # ("num_rays":..., 1)
         assert pixel_area.shape == num_rays_shape + (1,)
 
+        times = self.times[camera_indices, None] if self.times is not None else None
+
+        times = self.times[camera_indices, None] if self.times is not None else None
+
         return RayBundle(
-            origins=origins,
-            directions=directions,
-            pixel_area=pixel_area,
-            camera_indices=camera_indices,
+            origins=origins, directions=directions, pixel_area=pixel_area, camera_indices=ray_bundle_camera_indices
         )
 
     def to_json(
@@ -680,7 +688,7 @@ class Cameras(TensorDataclass):
             "fy": flattened[camera_idx].fy.item(),
             "camera_to_world": self.camera_to_worlds[camera_idx].tolist(),
             "camera_index": camera_idx,
-            "times": flattened[camera_idx].times.item() if self.times is not None else None,
+            "times": self.times[camera_idx] if self.times is not None else None,
         }
         if image is not None:
             image_uint8 = (image * 255).detach().type(torch.uint8)
