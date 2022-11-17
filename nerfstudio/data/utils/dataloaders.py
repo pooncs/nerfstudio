@@ -22,12 +22,13 @@ from typing import Dict, Optional, Tuple, Union
 
 import torch
 from rich.progress import Console, track
-from torch.utils.data import Dataset, default_collate
+from torch.utils.data import Dataset
 from torch.utils.data.dataloader import DataLoader
 
 from nerfstudio.cameras.cameras import Cameras
 from nerfstudio.cameras.rays import RayBundle
 from nerfstudio.data.datasets.base_dataset import InputDataset
+from nerfstudio.data.utils.nerfstudio_collate import nerfstudio_collate
 from nerfstudio.utils.misc import get_dict_to_torch
 
 CONSOLE = Console(width=120)
@@ -42,6 +43,7 @@ class CacheDataloader(DataLoader):
         num_samples_to_collate: How many images to sample rays for each batch. -1 for all images.
         num_times_to_repeat_images: How often to collate new images. -1 to never pick new images.
         device: Device to perform computation.
+        collate_fn: The function we will use to collate our training data
     """
 
     def __init__(
@@ -50,6 +52,7 @@ class CacheDataloader(DataLoader):
         num_images_to_sample_from: int = -1,
         num_times_to_repeat_images: int = -1,
         device: Union[torch.device, str] = "cpu",
+        collate_fn=nerfstudio_collate,
         **kwargs,
     ):
         self.dataset = dataset
@@ -57,6 +60,7 @@ class CacheDataloader(DataLoader):
         self.cache_all_images = (num_images_to_sample_from == -1) or (num_images_to_sample_from >= len(self.dataset))
         self.num_images_to_sample_from = len(self.dataset) if self.cache_all_images else num_images_to_sample_from
         self.device = device
+        self.collate_fn = collate_fn
 
         self.num_repeated = self.num_times_to_repeat_images  # starting value
         self.first_time = True
@@ -94,7 +98,7 @@ class CacheDataloader(DataLoader):
     def _get_collated_batch(self):
         """Returns a collated batch."""
         batch_list = self._get_batch_list()
-        collated_batch = default_collate(batch_list)
+        collated_batch = self.collate_fn(batch_list)
         collated_batch = get_dict_to_torch(collated_batch, device=self.device, exclude=["image"])
         return collated_batch
 
@@ -152,23 +156,7 @@ class EvalDataloader(DataLoader):
         Args:
             image_idx: Camera image index
         """
-        distortion_params = None
-        if self.cameras.distortion_params is not None:
-            distortion_params = self.cameras.distortion_params[image_idx]
-
-        camera = Cameras(
-            fx=self.cameras.fx[image_idx : image_idx + 1],
-            fy=self.cameras.fy[image_idx : image_idx + 1],
-            cx=self.cameras.cx[image_idx : image_idx + 1],
-            cy=self.cameras.cy[image_idx : image_idx + 1],
-            height=self.cameras.image_height[image_idx : image_idx + 1],
-            width=self.cameras.image_width[image_idx : image_idx + 1],
-            camera_to_worlds=self.cameras.camera_to_worlds[image_idx : image_idx + 1],
-            distortion_params=distortion_params,
-            camera_type=self.cameras.camera_type[image_idx : image_idx + 1],
-            times=self.cameras.times[image_idx : image_idx + 1] if self.cameras.time else None,
-        )
-        return camera
+        return self.cameras[image_idx]
 
     def get_data_from_image_idx(self, image_idx: int) -> Tuple[RayBundle, Dict]:
         """Returns the data for a specific image index.
