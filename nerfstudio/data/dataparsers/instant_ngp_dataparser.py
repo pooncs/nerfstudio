@@ -93,6 +93,7 @@ class InstantNGP(DataParser):
         scene_box = SceneBox(
             aabb=torch.tensor(
                 [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
+                #aabb, dtype=torch.float32
             )
         )
 
