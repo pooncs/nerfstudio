@@ -68,7 +68,7 @@ class Blender(DataParser):
         else:
             alpha_color_tensor = None
 
-        meta = load_from_json(self.data / f"transforms_{split}.json")
+        meta = load_from_json(self.data / f"transforms.json")
         image_filenames = []
         poses = []
         for frame in meta["frames"]:

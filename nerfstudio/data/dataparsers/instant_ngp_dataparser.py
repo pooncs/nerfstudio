@@ -47,7 +47,7 @@ class InstantNGPDataParserConfig(DataParserConfig):
     """Directory specifying location of data."""
     scale_factor: float = 1.0
     """How much to scale the camera origins by."""
-    scene_scale: float = 0.33
+    scene_scale: float = 1
     """How much to scale the scene."""
 
 
@@ -62,6 +62,7 @@ class InstantNGP(DataParser):
         meta = load_from_json(self.config.data / "transforms.json")
         image_filenames = []
         poses = []
+        fx, fy, cx, cy, h, w = [], [], [], [], [], []
         num_skipped_image_filenames = 0
         for frame in meta["frames"]:
             fname = self.config.data / Path(frame["file_path"])
@@ -70,6 +71,18 @@ class InstantNGP(DataParser):
             else:
                 image_filenames.append(fname)
                 poses.append(np.array(frame["transform_matrix"]))
+                fl_x, fl_y = InstantNGP.get_focal_lengths(frame)
+                fx.append(fl_x)
+                fy.append(fl_y)
+                cx.append(frame["cx"])
+                cy.append(frame["cy"])
+                h.append(frame["h"])
+                w.append(frame["w"])
+
+                distortion_params = camera_utils.get_distortion_params(
+                    k1=float(frame["k1"]), k2=float(frame["k2"]), p1=float(frame["p1"]), p2=float(frame["p2"])
+                )
+
         if num_skipped_image_filenames >= 0:
             CONSOLE.print(f"Skipping {num_skipped_image_filenames} files in dataset split {split}.")
         assert (
@@ -83,30 +96,27 @@ class InstantNGP(DataParser):
 
         camera_to_world = torch.from_numpy(poses[:, :3])  # camera to world transform
 
-        distortion_params = camera_utils.get_distortion_params(
-            k1=float(meta["k1"]), k2=float(meta["k2"]), p1=float(meta["p1"]), p2=float(meta["p2"])
-        )
-
         # in x,y,z order
         # assumes that the scene is centered at the origin
         aabb_scale = meta["aabb_scale"]
         scene_box = SceneBox(
             aabb=torch.tensor(
                 [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
-                #aabb, dtype=torch.float32
             )
         )
 
-        fl_x, fl_y = InstantNGP.get_focal_lengths(meta)
+        if "aabb" in meta:
+            aabb = meta["aabb"]
+            scene_box = SceneBox(aabb=torch.tensor(aabb, dtype=torch.float32))
 
         cameras = Cameras(
-            fx=float(fl_x),
-            fy=float(fl_y),
-            cx=float(meta["cx"]),
-            cy=float(meta["cy"]),
+            fx=torch.tensor(fx, dtype=torch.float32),
+            fy=torch.tensor(fy, dtype=torch.float32),
+            cx=torch.tensor(cx, dtype=torch.float32),
+            cy=torch.tensor(cy, dtype=torch.float32),
             distortion_params=distortion_params,
-            height=int(meta["h"]),
-            width=int(meta["w"]),
+            height=torch.tensor(h, dtype=torch.int),
+            width=torch.tensor(w, dtype=torch.int),
             camera_to_worlds=camera_to_world,
             camera_type=CameraType.PERSPECTIVE,
         )

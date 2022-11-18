@@ -60,7 +60,7 @@ class NerfstudioDataParserConfig(DataParserConfig):
     """Whether to center the poses."""
     auto_scale_poses: bool = True
     """Whether to automatically scale the poses to fit in +/- 1 bounding box."""
-    train_split_percentage: float = 0.9
+    train_split_percentage: float = 1
     """The percent of images to use for training. The remaining images are for eval."""
 
 
@@ -78,6 +78,7 @@ class Nerfstudio(DataParser):
         image_filenames = []
         poses = []
         num_skipped_image_filenames = 0
+        fx, fy, cx, cy, h, w = [], [], [], [], [], []
 
         for frame in meta["frames"]:
             filepath = PurePath(frame["file_path"])
@@ -87,6 +88,22 @@ class Nerfstudio(DataParser):
             else:
                 image_filenames.append(fname)
                 poses.append(np.array(frame["transform_matrix"]))
+                fx.append(frame["fl_x"])
+                fy.append(frame["fl_y"])
+                cx.append(frame["cx"])
+                cy.append(frame["cy"])
+                h.append(frame["h"])
+                w.append(frame["w"])
+
+                distortion_params = camera_utils.get_distortion_params(
+                k1=float(meta["k1"]) if "k1" in meta else 0.0,
+                k2=float(meta["k2"]) if "k2" in meta else 0.0,
+                k3=float(meta["k3"]) if "k3" in meta else 0.0,
+                k4=float(meta["k4"]) if "k4" in meta else 0.0,
+                p1=float(meta["p1"]) if "p1" in meta else 0.0,
+                p2=float(meta["p2"]) if "p2" in meta else 0.0,
+                )
+
         if num_skipped_image_filenames >= 0:
             CONSOLE.log(f"Skipping {num_skipped_image_filenames} files in dataset split {split}.")
         assert (
@@ -98,14 +115,17 @@ class Nerfstudio(DataParser):
 
         # filter image_filenames and poses based on train/eval split percentage
         num_images = len(image_filenames)
-        num_train_images = math.ceil(num_images * self.config.train_split_percentage)
-        num_eval_images = num_images - num_train_images
+        num_train_images = num_images #math.ceil(num_images * self.config.train_split_percentage)
+        num_eval_images = num_images #num_images - num_train_images
         i_all = np.arange(num_images)
-        i_train = np.linspace(
-            0, num_images - 1, num_train_images, dtype=int
-        )  # equally spaced training images starting and ending at 0 and num_images-1
-        i_eval = np.setdiff1d(i_all, i_train)  # eval images are the remaining images
-        assert len(i_eval) == num_eval_images
+        i_train = i_all
+        i_eval = i_all
+        #i_train = np.linspace(
+        #    0, num_images - 1, num_train_images, dtype=int
+        #)  # equally spaced training images starting and ending at 0 and num_images-1
+        
+        #i_eval = np.setdiff1d(i_all, i_train)  # eval images are the remaining images
+        #assert len(i_eval) == num_eval_images
         if split == "train":
             indices = i_train
         elif split in ["val", "test"]:
@@ -151,23 +171,16 @@ class Nerfstudio(DataParser):
         else:
             camera_type = CameraType.PERSPECTIVE
 
-        distortion_params = camera_utils.get_distortion_params(
-            k1=float(meta["k1"]) if "k1" in meta else 0.0,
-            k2=float(meta["k2"]) if "k2" in meta else 0.0,
-            k3=float(meta["k3"]) if "k3" in meta else 0.0,
-            k4=float(meta["k4"]) if "k4" in meta else 0.0,
-            p1=float(meta["p1"]) if "p1" in meta else 0.0,
-            p2=float(meta["p2"]) if "p2" in meta else 0.0,
-        )
+        
 
         cameras = Cameras(
-            fx=float(meta["fl_x"]),
-            fy=float(meta["fl_y"]),
-            cx=float(meta["cx"]),
-            cy=float(meta["cy"]),
+            fx=torch.tensor(fx, dtype=torch.float32),
+            fy=torch.tensor(fy, dtype=torch.float32),
+            cx=torch.tensor(cx, dtype=torch.float32),
+            cy=torch.tensor(cy, dtype=torch.float32),
             distortion_params=distortion_params,
-            height=int(meta["h"]),
-            width=int(meta["w"]),
+            height=torch.tensor(h, dtype=torch.int),
+            width=torch.tensor(w, dtype=torch.int),
             camera_to_worlds=poses[:, :3, :4],
             camera_type=camera_type,
         )
