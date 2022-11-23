@@ -56,7 +56,6 @@ class InstantNGP(DataParser):
     """Instant NGP Dataset"""
 
     config: InstantNGPDataParserConfig
-
     def _generate_dataparser_outputs(self, split="train"):
 
         meta = load_from_json(self.config.data / "transforms.json")
@@ -91,14 +90,21 @@ class InstantNGP(DataParser):
         No image files found. 
         You should check the file_paths in the transforms.json file to make sure they are correct.
         """
-        poses = np.array(poses).astype(np.float32)
-        poses[:, :3, 3] *= self.config.scene_scale
+        poses = np.array(poses).astype(np.float32) # N, 4R, 4C
+
+        #poses[:,1,:3] *= -1 #flip axis
+        #poses[:,2,:3] *= -1
+        poses[:,:3,3] *= self.config.scene_scale
+        #poses = poses[:,[1,2,0,3],:]
+        #norm = np.linalg.norm(poses[:,:3,3])/len(poses)
+        #poses[:,:3,3] /= 2
+        poses[:,:2,3] += 0.2
 
         camera_to_world = torch.from_numpy(poses[:, :3])  # camera to world transform
 
         # in x,y,z order
         # assumes that the scene is centered at the origin
-        aabb_scale = meta["aabb_scale"]
+        aabb_scale = meta["aabb_scale"]/2
         scene_box = SceneBox(
             aabb=torch.tensor(
                 [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
