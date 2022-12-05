@@ -98,13 +98,13 @@ class InstantNGP(DataParser):
         #poses = poses[:,[1,2,0,3],:]
         #norm = np.linalg.norm(poses[:,:3,3])/len(poses)
         #poses[:,:3,3] /= 2
-        poses[:,:2,3] += 0.2
+        poses[:,:2,3] += 0
 
         camera_to_world = torch.from_numpy(poses[:, :3])  # camera to world transform
 
         # in x,y,z order
         # assumes that the scene is centered at the origin
-        aabb_scale = meta["aabb_scale"]/2
+        aabb_scale = meta["aabb_scale"]
         scene_box = SceneBox(
             aabb=torch.tensor(
                 [[-aabb_scale, -aabb_scale, -aabb_scale], [aabb_scale, aabb_scale, aabb_scale]], dtype=torch.float32
