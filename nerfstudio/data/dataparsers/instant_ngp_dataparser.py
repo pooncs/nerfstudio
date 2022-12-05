@@ -149,19 +149,19 @@ class InstantNGP(DataParser):
         def fov_to_focal_length(rad, res):
             return 0.5 * res / np.tan(0.5 * rad)
 
-        if "fl_x" in meta:
+        if "camera_angle_x" in meta:
+            fl_x = fov_to_focal_length(meta["camera_angle_x"], meta["w"])
+        elif "fl_x" in meta:
             fl_x = meta["fl_x"]
         elif "x_fov" in meta:
             fl_x = fov_to_focal_length(np.deg2rad(meta["x_fov"]), meta["w"])
-        elif "camera_angle_x" in meta:
-            fl_x = fov_to_focal_length(meta["camera_angle_x"], meta["w"])
 
-        if "fl_y" in meta:
+        if "camera_angle_y" in meta:
+            fl_y = fov_to_focal_length(meta["camera_angle_y"], meta["h"])
+        elif "fl_y" in meta:
             fl_y = meta["fl_y"]
         elif "y_fov" in meta:
             fl_y = fov_to_focal_length(np.deg2rad(meta["y_fov"]), meta["h"])
-        elif "camera_angle_y" in meta:
-            fl_y = fov_to_focal_length(meta["camera_angle_y"], meta["h"])
 
         if fl_x == 0 or fl_y == 0:
             raise AttributeError("Focal length cannot be calculated from transforms.json (missing fields).")
